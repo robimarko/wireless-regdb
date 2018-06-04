@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from io import BytesIO, open
+from cStringIO import StringIO
 import struct
 import hashlib
 from dbparse import DBParser
@@ -11,21 +11,21 @@ MAGIC = 0x52474442
 VERSION = 20
 
 if len(sys.argv) < 3:
-    print('Usage: %s output-file input-file' % sys.argv[0])
+    print 'Usage: %s output-file input-file' % sys.argv[0]
     sys.exit(2)
 
 def create_rules(countries):
     result = {}
-    for c in countries.values():
+    for c in countries.itervalues():
         for rule in c.permissions:
             result[rule] = 1
-    return list(result)
+    return result.keys()
 
 def create_collections(countries):
     result = {}
-    for c in countries.values():
+    for c in countries.itervalues():
         result[(c.permissions, c.dfs_region)] = 1
-    return list(result)
+    return result.keys()
 
 def create_wmms(countries):
     result = {}
@@ -66,7 +66,7 @@ class PTR(object):
         return self._written
 
 p = DBParser()
-countries = p.parse(open(sys.argv[2], 'r', encoding='utf-8'))
+countries = p.parse(file(sys.argv[2]))
 rules = create_rules(countries)
 rules.sort()
 collections = create_collections(countries)
@@ -74,20 +74,20 @@ collections.sort()
 wmms = create_wmms(countries)
 wmms.sort()
 
-output = BytesIO()
+output = StringIO()
 
 # struct regdb_file_header
 be32(output, MAGIC)
 be32(output, VERSION)
 
 country_ptrs = {}
-countrynames = list(countries)
+countrynames = countries.keys()
 countrynames.sort()
 for alpha2 in countrynames:
     coll = countries[alpha2]
-    output.write(struct.pack('>BB', alpha2[0], alpha2[1]))
+    output.write(struct.pack('>cc', str(alpha2[0]), str(alpha2[1])))
     country_ptrs[alpha2] = PTR(output)
-output.write(b'\x00' * 4)
+output.write('\x00' * 4)
 
 wmmdb = {}
 for w in wmms:
@@ -125,8 +125,8 @@ for reg_rule in rules:
         rule_len += 2
     if wmm_rule is not None:
         rule_len += 2
-    output.write(struct.pack('>BBHIII', rule_len, flags, int(power_rule.max_eirp * 100),
-                             int(freq_range.start * 1000), int(freq_range.end * 1000), int(freq_range.maxbw * 1000),
+    output.write(struct.pack('>BBHIII', rule_len, flags, power_rule.max_eirp * 100,
+                             freq_range.start * 1000, freq_range.end * 1000, freq_range.maxbw * 1000,
                              ))
     if rule_len > 16:
         output.write(struct.pack('>H', cac_timeout))
@@ -154,5 +154,5 @@ for coll in collections:
 for alpha2 in countrynames:
     assert country_ptrs[alpha2].written
 
-outfile = open(sys.argv[1], 'wb')
+outfile = open(sys.argv[1], 'w')
 outfile.write(output.getvalue())
